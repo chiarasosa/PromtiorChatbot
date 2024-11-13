@@ -1,4 +1,4 @@
-from langchain_community.document_loaders import WebBaseLoader
+from langchain_community.document_loaders import RecursiveUrlLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import FAISS
@@ -15,6 +15,7 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from langserve import add_routes
+from bs4 import BeautifulSoup
 
 # 1. Cargar variables de entorno
 load_dotenv()
@@ -23,7 +24,12 @@ if not os.getenv("OPENAI_API_KEY"):
     raise ValueError("OPENAI_API_KEY no está configurada") 
 
 # 1. Cargar la página web
-loader = WebBaseLoader("https://www.promtior.ai/")
+loader = RecursiveUrlLoader(
+    url="https://www.promtior.ai/",
+    max_depth=5,  # Profundidad máxima de navegación
+    extractor=lambda x: BeautifulSoup(x, "html.parser").get_text(),
+    prevent_outside=True  # Solo URLs dentro del dominio
+)
 documents = loader.load()
 
 # 2. Dividir el texto
