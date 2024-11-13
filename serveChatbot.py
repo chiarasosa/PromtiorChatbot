@@ -17,33 +17,33 @@ from fastapi import FastAPI
 from langserve import add_routes
 from bs4 import BeautifulSoup
 
-# 1. Cargar variables de entorno
+# Initial setup
 load_dotenv()
 
 if not os.getenv("OPENAI_API_KEY"):
     raise ValueError("OPENAI_API_KEY no está configurada") 
 
-# 1. Cargar la página web
+# Web content loading
 loader = RecursiveUrlLoader(
     url="https://www.promtior.ai/",
-    max_depth=5,  # Profundidad máxima de navegación
+    max_depth=5,  
     extractor=lambda x: BeautifulSoup(x, "html.parser").get_text(),
-    prevent_outside=True  # Solo URLs dentro del dominio
+    prevent_outside=True 
 )
 documents = loader.load()
 
-# 2. Dividir el texto
+# Text splitting
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=1000,
     chunk_overlap=200
 )
 splits = text_splitter.split_documents(documents)
 
-# 3. Crear embeddings y vectorstore
+# Embeddings and vectorstore
 embeddings = OpenAIEmbeddings()
 vectorstore = FAISS.from_documents(splits, embeddings)
 
-# 4. Crear el chain de conversación
+# Conversational chain setup
 model = ChatOpenAI(model="gpt-3.5-turbo")
 chain = ConversationalRetrievalChain.from_llm(
     llm=model,
@@ -52,20 +52,17 @@ chain = ConversationalRetrievalChain.from_llm(
     return_generated_question=True, 
 )
 
-# 5. Configurar LangGraph para memoria
+
+# State setup
 class State(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
     context: str
 
-workflow = StateGraph(State)
-
+# Model call
 def call_model(state: State):
-    # Obtener la última pregunta
     question = state["messages"][-1].content
-    # Obtener historial previo
     chat_history = [(msg.content, "") for msg in state["messages"][:-1]]
     
-    # Consultar usando el chain que incluye la búsqueda en la web
     response = chain({
         "question": question,
         "chat_history": chat_history
@@ -74,14 +71,16 @@ def call_model(state: State):
     parsed_response = parser.parse(response["answer"])
     return parsed_response
 
-# Configurar el grafo
+
+# Stategraph and Memory
+workflow = StateGraph(State)
 workflow.add_node("model", call_model)
 workflow.set_entry_point("model")
 
-# Compilar con memoria
 memory = MemorySaver()
 app = workflow.compile(checkpointer=memory)
 
+# Deployment
 app = FastAPI(
   title="LangChain Server",
   version="1.0",
@@ -97,5 +96,4 @@ add_routes(
 
 if __name__ == "__main__":
     import uvicorn
-
-    uvicorn.run(app, host="localhost", port=8003)
+    uvicorn.run(app, host="localhost", port=8000)
