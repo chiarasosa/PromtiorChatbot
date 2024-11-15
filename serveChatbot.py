@@ -11,6 +11,7 @@ from typing_extensions import Annotated, TypedDict
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.output_parsers import StrOutputParser
 from langchain.prompts import PromptTemplate
+from langchain_core.runnables import RunnablePassthrough
 import os
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -52,6 +53,20 @@ chain = ConversationalRetrievalChain.from_llm(
     return_generated_question=True, 
 )
 
+# Conversational chain setup
+model = ChatOpenAI(model="gpt-3.5-turbo")
+chain = (
+    ConversationalRetrievalChain.from_llm(
+        llm=model,
+        retriever=vectorstore.as_retriever(),
+        return_source_documents=False,
+        return_generated_question=False,
+    )
+    | RunnablePassthrough.assign(
+        answer=lambda x: x["answer"]
+    )
+    | (lambda x: x["answer"]) 
+)
 
 # State setup
 class State(TypedDict):
@@ -93,6 +108,11 @@ add_routes(
     chain,
     path="/chain",
 )
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
 
 if __name__ == "__main__":
     import uvicorn
